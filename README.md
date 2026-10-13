@@ -4,8 +4,6 @@
 
 **我喜欢你，你喜欢我**
 
-把日常里重复、琐碎的流程，整理成更清晰、可复用的小工具。
-
 <img src="https://count.getloli.com/@shangzhimingge?name=shangzhimingge&theme=booru-jaypee&padding=7&offset=0&align=center&scale=0.6&pixelated=1&darkmode=auto" alt="访客计数" />
 
 ### 🐍 我的贡献记录
