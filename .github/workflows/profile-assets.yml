@@ -1,0 +1,93 @@
+name: Publish contribution snake
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 20 * * *' # UTC; 04:23 the next day in Asia/Shanghai
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - .github/workflows/profile-assets.yml
+      - github-snake.svg
+      - github-snake-dark.svg
+
+permissions: {}
+
+concurrency:
+  group: profile-assets-output
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Generate light and dark contribution snakes
+        uses: Platane/snk/svg-only@d8f6715049803e982ee5ff501b6b9b7d5deeb09b
+        with:
+          github_user_name: shangzhimingge
+          github_token: ${{ github.token }}
+          outputs: |
+            dist/github-snake.svg?palette=github-light
+            dist/github-snake-dark.svg?palette=github-dark
+      - name: Upload generated SVGs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: profile-snake
+          path: |
+            dist/github-snake.svg
+            dist/github-snake-dark.svg
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download generated SVGs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: profile-snake
+          path: generated
+      - name: Update only generated files on output branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -s generated/github-snake.svg
+          test -s generated/github-snake-dark.svg
+          git init publish
+          git -C publish remote add origin "https://github.com/${REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -C publish config http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+          set +e
+          git -C publish ls-remote --exit-code --heads origin output >/dev/null
+          branch_status=$?
+          set -e
+          if [ "$branch_status" -eq 0 ]; then
+            git -C publish fetch --depth=1 origin output
+            git -C publish checkout -B output FETCH_HEAD
+          elif [ "$branch_status" -eq 2 ]; then
+            git -C publish fetch --depth=1 origin main
+            git -C publish checkout -B output FETCH_HEAD
+          else
+            echo 'Output branch lookup failed.' >&2
+            exit "$branch_status"
+          fi
+          install -m 0644 generated/github-snake.svg publish/github-snake.svg
+          install -m 0644 generated/github-snake-dark.svg publish/github-snake-dark.svg
+          git -C publish add -- github-snake.svg github-snake-dark.svg
+          if git -C publish diff --cached --quiet; then
+            echo 'Generated assets are unchanged.'
+            exit 0
+          fi
+          git -C publish -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: update contribution snakes'
+          git -C publish push origin HEAD:output
